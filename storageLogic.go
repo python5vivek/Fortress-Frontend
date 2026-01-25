@@ -16,11 +16,20 @@ type ChatMessage struct {
 }
 
 type ChatFile struct {
+	Id          int
 	UserName    string        `json:"user_name"`
-	FirstName   string        `json:"first_name"`
-	LastName    string        `json:"last_name"`
+	First_Name  string        `json:"first_name"`
+	Last_Name   string        `json:"last_name"`
 	ChannelName string        `json:"channel_name"`
 	Messages    []ChatMessage `json:"messages"`
+}
+
+type ChattedUser struct {
+	ID          int
+	UserName    string
+	FirstName   string
+	LastName    string
+	ChannelName string
 }
 
 func chatDir() string {
@@ -52,9 +61,10 @@ func LoadOrCreateChat(
 
 	// else → create
 	chat := ChatFile{
+		Id:          userID,
 		UserName:    username,
-		FirstName:   first,
-		LastName:    last,
+		First_Name:  first,
+		Last_Name:   last,
 		ChannelName: fmt.Sprintf("user_%d", userID),
 		Messages:    []ChatMessage{},
 	}
@@ -103,4 +113,46 @@ func GetMessages(userID int) ([]ChatMessage, error) {
 	}
 
 	return chat.Messages, nil
+}
+
+func GetChattedUsers() ([]ChattedUser, error) {
+	var users []ChattedUser
+
+	files, err := os.ReadDir(chatDir())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
+		// extract user ID from filename: user_<id>.json
+		var id int
+		_, err := fmt.Sscanf(file.Name(), "user_%d.json", &id)
+		if err != nil {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(chatDir(), file.Name()))
+		if err != nil {
+			continue
+		}
+
+		var chat ChatFile
+		if err := json.Unmarshal(data, &chat); err != nil {
+			continue
+		}
+
+		users = append(users, ChattedUser{
+			ID:          id,
+			UserName:    chat.UserName,
+			FirstName:   chat.First_Name,
+			LastName:    chat.Last_Name,
+			ChannelName: chat.ChannelName,
+		})
+	}
+
+	return users, nil
 }

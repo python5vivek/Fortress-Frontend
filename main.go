@@ -326,18 +326,14 @@ func ChatInput(onSend func(msg string)) fyne.CanvasObject {
 	)
 }
 
-func ChatPage(w fyne.Window, username string, onBack func()) fyne.CanvasObject {
+func ChatPage(w fyne.Window, id int, username string, onBack func()) fyne.CanvasObject {
 	msgBox, scroll := ChatMessages()
-
-	// TEMP demo messages
-	msgBox.Add(ChatBubble("Hello!", false))
-	msgBox.Add(ChatBubble("Hi,\nhow are you?", true))
-	msgBox.Add(ChatBubble("All good 👍", false))
 
 	input := ChatInput(func(msg string) {
 		msgBox.Add(ChatBubble(msg, true))
 		scroll.ScrollToBottom()
 	})
+	fmt.Println(id)
 
 	return container.NewBorder(
 		ChatHeader(w, username, onBack), // TOP
@@ -379,20 +375,20 @@ func ChatRow(username, lastMsg, time string, onClick func()) fyne.CanvasObject {
 func ChatList(w fyne.Window) fyne.CanvasObject {
 	list := container.NewVBox()
 
-	// MOCK DATA (replace later)
 	chats := []struct {
+		ID   int
 		User string
 		Last string
 		Time string
 	}{
-		{"alice", "Hi there", "10:30"},
-		{"bob", "See you", "09:15"},
-		{"charlie", "Ok", "Yesterday"},
+		{1, "alice", "Hi there", "10:30"},
+		{2, "bob", "See you", "09:15"},
+		{3, "charlie", "Ok", "Yesterday"},
 	}
 
 	for _, c := range chats {
 		row := ChatRow(c.User, c.Last, c.Time, func() {
-			w.SetContent(ChatPage(w, c.User, func() {
+			w.SetContent(ChatPage(w, c.ID, c.User, func() {
 				HomePage(w)
 			}))
 		})
@@ -567,11 +563,9 @@ func AllUsersList(w fyne.Window) fyne.CanvasObject {
 			u.First_Name,
 			u.Last_Name,
 			func() {
-				dialog.ShowInformation(
-					"Chat",
-					"Open chat with "+u.Username,
-					w,
-				)
+				w.SetContent(ChatPage(w, u.ID, u.Username, func() {
+					HomePage(w)
+				}))
 			},
 		)
 		list.Add(row)
