@@ -283,7 +283,7 @@ func ChatMessages() (*fyne.Container, *container.Scroll) {
 
 func ChatBubble(text string, isMe bool) fyne.CanvasObject {
 	label := widget.NewLabel(text)
-	label.Wrapping = fyne.TextWrapWord
+	//label.Wrapping = fyne.TextWrapWord
 	label.Resize(fyne.NewSize(200, label.MinSize().Height))
 
 	bg := canvas.NewRectangle(theme.InputBackgroundColor())
@@ -392,7 +392,9 @@ func ChatList(w fyne.Window) fyne.CanvasObject {
 
 	for _, c := range chats {
 		row := ChatRow(c.User, c.Last, c.Time, func() {
-			dialog.ShowInformation("Open Chat", "Open chat with "+c.User, w)
+			w.SetContent(ChatPage(w, c.User, func() {
+				HomePage(w)
+			}))
 		})
 		list.Add(row)
 	}
