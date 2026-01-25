@@ -555,23 +555,15 @@ func UserRow(
 
 func AllUsersList(w fyne.Window) fyne.CanvasObject {
 	list := container.NewVBox()
-
+	token, _ := GetToken()
+	users, _ := AllUsers(token)
 	// MOCK DATA
-	users := []struct {
-		Username string
-		First    string
-		Last     string
-	}{
-		{"alice", "Alice", "Smith"},
-		{"bob", "Bob", "Johnson"},
-		{"charlie", "Charlie", "Brown"},
-	}
 
 	for _, u := range users {
 		row := UserRow(
 			u.Username,
-			u.First,
-			u.Last,
+			u.First_Name,
+			u.Last_Name,
 			func() {
 				dialog.ShowInformation(
 					"Chat",
@@ -629,6 +621,15 @@ func main() {
 	//ClearToken()
 	a := app.New()
 	w := a.NewWindow("Chat App")
+
+	settings := LoadSettings()
+
+	if settings.Theme == "dark" {
+		a.Settings().SetTheme(theme.DarkTheme())
+	} else {
+		a.Settings().SetTheme(theme.LightTheme())
+	}
+
 	token, has := GetToken()
 	if !has {
 		token = ""

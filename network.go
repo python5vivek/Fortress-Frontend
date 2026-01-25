@@ -9,6 +9,14 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type User struct {
+	ID        int    `json:"id"`
+	Username  string `json:"username"`
+	First_Name string `json:"first_name"`
+	Last_Name  string `json:"last_name"`
+}
+
+
 func ConnectWS(baseURL, token string) (*websocket.Conn, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
@@ -71,16 +79,19 @@ func getJSON(url, token string) (*http.Response, error) {
 	return client.Do(req)
 }
 
-func AllUsers(token string) []interface{} {
+func AllUsers(token string) ([]User, error) {
 	url := BaseURL + "/users/"
 	resp, err := getJSON(url, token)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer resp.Body.Close()
 
-	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
-	users := result["users"].([]interface{})
-	return users
+	var users []User
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }
+
