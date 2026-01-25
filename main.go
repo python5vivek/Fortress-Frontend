@@ -331,7 +331,7 @@ func ChatPage(w fyne.Window, username string, onBack func()) fyne.CanvasObject {
 
 	// TEMP demo messages
 	msgBox.Add(ChatBubble("Hello!", false))
-	msgBox.Add(ChatBubble("Hi, how are you?", true))
+	msgBox.Add(ChatBubble("Hi,\nhow are you?", true))
 	msgBox.Add(ChatBubble("All good 👍", false))
 
 	input := ChatInput(func(msg string) {
@@ -608,7 +608,7 @@ func HomePage(w fyne.Window) {
 			GlobalChatPage(),
 		),
 		container.NewTabItemWithIcon(
-			"Profile",
+			"Pr",
 			theme.SettingsIcon(),
 			ProfilePage(w, "username", "First", "Last", func() {
 				ClearToken()
