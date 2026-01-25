@@ -326,14 +326,27 @@ func ChatInput(onSend func(msg string)) fyne.CanvasObject {
 	)
 }
 
-func ChatPage(w fyne.Window, id int, username string, onBack func()) fyne.CanvasObject {
+func ChatPage(w fyne.Window, id int, username string, firstn string, lastn string, onBack func()) fyne.CanvasObject {
 	msgBox, scroll := ChatMessages()
 
+	chat, err := LoadOrCreateChat(id, username, firstn, lastn)
+	if err != nil {
+		panic(err)
+	}
+	chats := chat.Messages
+	for _, u := range chats {
+		fmt.Println(u)
+		if u.From == "You" {
+			msgBox.Add(ChatBubble(u.Message, true))
+		} else {
+			msgBox.Add(ChatBubble(u.Message, false))
+		}
+	}
 	input := ChatInput(func(msg string) {
 		msgBox.Add(ChatBubble(msg, true))
+		AppendMessage(id, &ChatFile{Id: id, First_Name: firstn, UserName: username}, "You", username, msg)
 		scroll.ScrollToBottom()
 	})
-	fmt.Println(id)
 
 	return container.NewBorder(
 		ChatHeader(w, username, onBack), // TOP
@@ -374,28 +387,24 @@ func ChatRow(username, lastMsg, time string, onClick func()) fyne.CanvasObject {
 
 func ChatList(w fyne.Window) fyne.CanvasObject {
 	list := container.NewVBox()
-
-	chats := []struct {
-		ID   int
-		User string
-		Last string
-		Time string
-	}{
-		{1, "alice", "Hi there", "10:30"},
-		{2, "bob", "See you", "09:15"},
-		{3, "charlie", "Ok", "Yesterday"},
+	chatted, err := GetChattedUsers()
+	if err != nil {
+		panic(err)
 	}
+	if len(chatted) > 0 {
+		for _, c := range chatted {
+			row := ChatRow(c.UserName, c.FirstName, c.LastName, func() {
+				w.SetContent(ChatPage(w, c.ID, c.UserName, c.FirstName, c.LastName, func() {
+					HomePage(w)
+				}))
+			})
+			list.Add(row)
+		}
 
-	for _, c := range chats {
-		row := ChatRow(c.User, c.Last, c.Time, func() {
-			w.SetContent(ChatPage(w, c.ID, c.User, func() {
-				HomePage(w)
-			}))
-		})
-		list.Add(row)
+		return container.NewVScroll(list)
+	} else {
+		return container.NewVScroll(widget.NewLabel("No Chat Yet"))
 	}
-
-	return container.NewVScroll(list)
 }
 
 func ChatAppBar(w fyne.Window) fyne.CanvasObject {
@@ -563,7 +572,7 @@ func AllUsersList(w fyne.Window) fyne.CanvasObject {
 			u.First_Name,
 			u.Last_Name,
 			func() {
-				w.SetContent(ChatPage(w, u.ID, u.Username, func() {
+				w.SetContent(ChatPage(w, u.ID, u.Username, u.First_Name, u.Last_Name, func() {
 					HomePage(w)
 				}))
 			},
