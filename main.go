@@ -28,12 +28,7 @@ type ChatBox struct {
 	scroller   *container.Scroll
 }
 
-type NotificationBoxH struct {
-	username string
-	Box      *widget.Button
-}
-
-var NotificationBoxes = []NotificationBoxH{}
+var NotificationBoxes = map[string]*widget.Button{}
 
 var chatbox_1 *ChatBox
 
@@ -347,12 +342,8 @@ func ChatInput(onSend func(msg string)) fyne.CanvasObject {
 func ChatPage(w fyne.Window, id int, username string, firstn string, lastn string, onBack func()) fyne.CanvasObject {
 	chatOpened = true
 	msgBox, scroll := ChatMessages()
-	for i := range NotificationBoxes {
-		if NotificationBoxes[i].username == username {
-			NotificationBoxes[i].Box.SetText("0")
-			NotificationBoxes[i].Box.Refresh()
-		}
-	}
+	NotificationBoxes[username].SetText("0")
+	NotificationBoxes[username].Refresh()
 	chatbox_1 = &ChatBox{id, msgBox, username, scroll}
 
 	chat, err := LoadOrCreateChat(id, username, firstn, lastn)
@@ -396,25 +387,12 @@ func ChatRow(username, lastMsg, timeStr string, onClick func()) fyne.CanvasObjec
 
 	timestamp := widget.NewLabel(timeStr)
 
-	var notifBtn *widget.Button
-
-	// 🔍 find existing notification box
-	for i := range NotificationBoxes {
-		if NotificationBoxes[i].username == username {
-			notifBtn = NotificationBoxes[i].Box
-			break
-		}
-	}
-
-	// ➕ create if not found
-	if notifBtn == nil {
+	// 🔍 get or create notification button
+	notifBtn, ok := NotificationBoxes[username]
+	if !ok {
 		notifBtn = widget.NewButton("0", func() {})
 		notifBtn.Disable()
-
-		NotificationBoxes = append(NotificationBoxes, NotificationBoxH{
-			username: username,
-			Box:      notifBtn,
-		})
+		NotificationBoxes[username] = notifBtn
 	}
 
 	notificationBox := container.NewVBox(
@@ -754,14 +732,11 @@ func main() {
 								return
 							}
 
-							for i := range NotificationBoxes {
-								if NotificationBoxes[i].username == msg["who"] {
-									if n, err := strconv.Atoi(NotificationBoxes[i].Box.Text); err == nil {
-										NotificationBoxes[i].Box.SetText(strconv.Itoa(n + 1))
-										NotificationBoxes[i].Box.Refresh()
-									}
-								}
+							nu, err := strconv.Atoi(NotificationBoxes[msg["who"].(string)].Text)
+							if err != nil {
+								panic(err)
 							}
+							NotificationBoxes[msg["who"].(string)].SetText(strconv.Itoa(nu + 1))
 							if chatOpened {
 								if chatbox_1.username == msg["who"] {
 									chatbox_1.messagebox.Add(ChatBubble(msg["message"].(string), false))
