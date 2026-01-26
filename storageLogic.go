@@ -156,3 +156,19 @@ func GetChattedUsers() ([]ChattedUser, error) {
 
 	return users, nil
 }
+
+func GetChatByUserID(userID int) (*ChatFile, error) {
+	path := chatFilePath(userID)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var chat ChatFile
+	if err := json.Unmarshal(data, &chat); err != nil {
+		return nil, err
+	}
+
+	return &chat, nil
+}

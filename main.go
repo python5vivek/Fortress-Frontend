@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -18,6 +19,12 @@ import (
 var wsConn *websocket.Conn
 var messageBox *fyne.Container
 var w *fyne.Window
+
+type ChatBox struct {
+	Id         int
+	messagebox *fyne.Container
+	username   string
+}
 
 func ConnectingPage() fyne.CanvasObject {
 	loader := widget.NewActivity()
@@ -344,7 +351,8 @@ func ChatPage(w fyne.Window, id int, username string, firstn string, lastn strin
 	}
 	input := ChatInput(func(msg string) {
 		msgBox.Add(ChatBubble(msg, true))
-		AppendMessage(id, &ChatFile{Id: id, First_Name: firstn, UserName: username}, "You", username, msg)
+		AppendMessage(id, chat, "You", username, msg)
+		SendToUser(wsConn, id, msg)
 		scroll.ScrollToBottom()
 	})
 
@@ -369,12 +377,15 @@ func ChatRow(username, lastMsg, time string, onClick func()) fyne.CanvasObject {
 
 	timestamp := widget.NewLabel(time)
 	//timestamp.Alignment = fyne.TextAlignTrailing
-
-	left := container.NewVBox(name, timestamp)
+	buttonNotification := widget.NewButton("1", func() {})
+	buttonNotification.Disable()
+	notificationbox := container.NewVBox(layout.NewSpacer(), buttonNotification, layout.NewSpacer())
+	left := container.NewHBox(container.NewVBox(name, timestamp), layout.NewSpacer(), notificationbox) //layout.NewSpacer())
 
 	button := widget.NewButton("", onClick)
 	button.Text = "Chat"
 	button.Importance = widget.HighImportance
+
 	pressbu := container.NewHBox(layout.NewSpacer(), button, layout.NewSpacer())
 	return container.NewBorder(
 		nil,
@@ -670,10 +681,30 @@ func main() {
 							fmt.Println("WebSocket closed:", err)
 							return
 						}
-						fyne.Do(func() {
-							msg := MessageBubble(msg["who"].(string), msg["message"].(string))
-							messageBox.Add(msg)
-						})
+						if msg["from"] == "global" {
+							fyne.Do(func() {
+								msgUI := MessageBubble(msg["who"].(string), msg["message"].(string))
+								messageBox.Add(msgUI)
+							})
+						}
+						if msg["from"] == "user" {
+							idStr, ok := msg["id"].(string)
+							if !ok {
+								return
+							}
+
+							id, err := strconv.Atoi(idStr)
+							if err != nil {
+								return
+							}
+
+							chasts, err := GetChatByUserID(id)
+							if err != nil {
+								return
+							}
+							AppendMessage(id, chasts, msg["who"].(string), "You", msg["message"].(string))
+
+						}
 					}
 				}()
 
