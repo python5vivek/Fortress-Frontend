@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var chatOpened = false
 var wsConn *websocket.Conn
 var messageBox *fyne.Container
 var w *fyne.Window
@@ -24,7 +25,17 @@ type ChatBox struct {
 	Id         int
 	messagebox *fyne.Container
 	username   string
+	scroller   *container.Scroll
 }
+
+type NotificationBoxH struct {
+	username string
+	Box      *widget.Button
+}
+
+var NotificationBoxes = []NotificationBoxH{}
+
+var chatbox_1 *ChatBox
 
 func ConnectingPage() fyne.CanvasObject {
 	loader := widget.NewActivity()
@@ -334,7 +345,15 @@ func ChatInput(onSend func(msg string)) fyne.CanvasObject {
 }
 
 func ChatPage(w fyne.Window, id int, username string, firstn string, lastn string, onBack func()) fyne.CanvasObject {
+	chatOpened = true
 	msgBox, scroll := ChatMessages()
+	for i := range NotificationBoxes {
+		if NotificationBoxes[i].username == username {
+			NotificationBoxes[i].Box.SetText("0")
+			NotificationBoxes[i].Box.Refresh()
+		}
+	}
+	chatbox_1 = &ChatBox{id, msgBox, username, scroll}
 
 	chat, err := LoadOrCreateChat(id, username, firstn, lastn)
 	if err != nil {
@@ -342,12 +361,13 @@ func ChatPage(w fyne.Window, id int, username string, firstn string, lastn strin
 	}
 	chats := chat.Messages
 	for _, u := range chats {
-		fmt.Println(u)
+		//fmt.Println(u)
 		if u.From == "You" {
 			msgBox.Add(ChatBubble(u.Message, true))
 		} else {
 			msgBox.Add(ChatBubble(u.Message, false))
 		}
+		scroll.ScrollToBottom()
 	}
 	input := ChatInput(func(msg string) {
 		msgBox.Add(ChatBubble(msg, true))
@@ -355,7 +375,6 @@ func ChatPage(w fyne.Window, id int, username string, firstn string, lastn strin
 		SendToUser(wsConn, id, msg)
 		scroll.ScrollToBottom()
 	})
-
 	return container.NewBorder(
 		ChatHeader(w, username, onBack), // TOP
 		input,                           // BOTTOM
@@ -365,7 +384,7 @@ func ChatPage(w fyne.Window, id int, username string, firstn string, lastn strin
 	)
 }
 
-func ChatRow(username, lastMsg, time string, onClick func()) fyne.CanvasObject {
+func ChatRow(username, lastMsg, timeStr string, onClick func()) fyne.CanvasObject {
 	name := widget.NewLabelWithStyle(
 		username,
 		fyne.TextAlignLeading,
@@ -375,23 +394,55 @@ func ChatRow(username, lastMsg, time string, onClick func()) fyne.CanvasObject {
 	msg := widget.NewLabel(lastMsg)
 	msg.Truncation = fyne.TextTruncateEllipsis
 
-	timestamp := widget.NewLabel(time)
-	//timestamp.Alignment = fyne.TextAlignTrailing
-	buttonNotification := widget.NewButton("1", func() {})
-	buttonNotification.Disable()
-	notificationbox := container.NewVBox(layout.NewSpacer(), buttonNotification, layout.NewSpacer())
-	left := container.NewHBox(container.NewVBox(name, timestamp), layout.NewSpacer(), notificationbox) //layout.NewSpacer())
+	timestamp := widget.NewLabel(timeStr)
 
-	button := widget.NewButton("", onClick)
-	button.Text = "Chat"
-	button.Importance = widget.HighImportance
+	var notifBtn *widget.Button
 
-	pressbu := container.NewHBox(layout.NewSpacer(), button, layout.NewSpacer())
+	// 🔍 find existing notification box
+	for i := range NotificationBoxes {
+		if NotificationBoxes[i].username == username {
+			notifBtn = NotificationBoxes[i].Box
+			break
+		}
+	}
+
+	// ➕ create if not found
+	if notifBtn == nil {
+		notifBtn = widget.NewButton("0", func() {})
+		notifBtn.Disable()
+
+		NotificationBoxes = append(NotificationBoxes, NotificationBoxH{
+			username: username,
+			Box:      notifBtn,
+		})
+	}
+
+	notificationBox := container.NewVBox(
+		layout.NewSpacer(),
+		notifBtn,
+		layout.NewSpacer(),
+	)
+
+	left := container.NewHBox(
+		container.NewVBox(name, timestamp),
+		layout.NewSpacer(),
+		notificationBox,
+	)
+
+	chatBtn := widget.NewButton("Chat", onClick)
+	chatBtn.Importance = widget.HighImportance
+
+	right := container.NewVBox(
+		layout.NewSpacer(),
+		chatBtn,
+		layout.NewSpacer(),
+	)
+
 	return container.NewBorder(
 		nil,
 		nil,
 		nil,
-		container.NewVBox(layout.NewSpacer(), pressbu, layout.NewSpacer()),
+		right,
 		left,
 	)
 }
@@ -414,7 +465,7 @@ func ChatList(w fyne.Window) fyne.CanvasObject {
 
 		return container.NewVScroll(list)
 	} else {
-		return container.NewVScroll(widget.NewLabel("No Chat Yet"))
+		return container.NewVScroll(container.NewCenter(widget.NewLabel("No Chat Yet")))
 	}
 }
 
@@ -701,6 +752,21 @@ func main() {
 							chasts, err := GetChatByUserID(id)
 							if err != nil {
 								return
+							}
+
+							for i := range NotificationBoxes {
+								if NotificationBoxes[i].username == msg["who"] {
+									if n, err := strconv.Atoi(NotificationBoxes[i].Box.Text); err == nil {
+										NotificationBoxes[i].Box.SetText(strconv.Itoa(n + 1))
+										NotificationBoxes[i].Box.Refresh()
+									}
+								}
+							}
+							if chatOpened {
+								if chatbox_1.username == msg["who"] {
+									chatbox_1.messagebox.Add(ChatBubble(msg["message"].(string), false))
+									chatbox_1.scroller.ScrollToBottom()
+								}
 							}
 							AppendMessage(id, chasts, msg["who"].(string), "You", msg["message"].(string))
 
