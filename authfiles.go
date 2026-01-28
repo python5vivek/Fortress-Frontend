@@ -2,42 +2,92 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
+	"io"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/storage"
 )
 
-func TokenFilePath() string {
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".chatapp")
-	os.MkdirAll(dir, 0700)
-	return filepath.Join(dir, "auth.json")
+// helper
+func tokenURI(app fyne.App) (fyne.URI, error) {
+	return storage.Child(app.Storage().RootURI(), "auth.json")
 }
-func SaveToken(token string) error {
+
+func SaveToken(app fyne.App, token string) error {
+	uri, err := tokenURI(app)
+	if err != nil {
+		return err
+	}
+
+	w, err := storage.Writer(uri)
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+
 	data := map[string]string{
 		"token": token,
 	}
 
-	bytes, _ := json.Marshal(data)
-	return os.WriteFile(TokenFilePath(), bytes, 0600)
+	b, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(b)
+	return err
 }
-func HasToken() bool {
-	_, err := os.Stat(TokenFilePath())
-	return err == nil
+
+func HasToken(app fyne.App) bool {
+	uri, err := tokenURI(app)
+	if err != nil {
+		return false
+	}
+
+	r, err := storage.Reader(uri)
+	if err != nil {
+		return false
+	}
+	r.Close()
+	return true
 }
-func GetToken() (string, bool) {
-	bytes, err := os.ReadFile(TokenFilePath())
+
+func GetToken(app fyne.App) (string, bool) {
+	uri, err := tokenURI(app)
+	if err != nil {
+		return "", false
+	}
+
+	r, err := storage.Reader(uri)
+	if err != nil {
+		return "", false
+	}
+	defer r.Close()
+
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return "", false
 	}
 
 	var data map[string]string
-	if err := json.Unmarshal(bytes, &data); err != nil {
+	if err := json.Unmarshal(b, &data); err != nil {
 		return "", false
 	}
 
 	token, ok := data["token"]
 	return token, ok
 }
-func ClearToken() {
-	os.Remove(TokenFilePath())
+
+func ClearToken(app fyne.App) {
+	uri, err := tokenURI(app)
+	if err != nil {
+		return
+	}
+
+	// overwrite with empty file (Delete is not guaranteed)
+	w, err := storage.Writer(uri)
+	if err != nil {
+		return
+	}
+	w.Close()
 }

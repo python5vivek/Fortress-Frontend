@@ -20,6 +20,7 @@ var chatOpened = false
 var wsConn *websocket.Conn
 var messageBox *fyne.Container
 var w *fyne.Window
+var applo fyne.App
 
 type ChatBox struct {
 	Id         int
@@ -88,7 +89,7 @@ func LoginView(w fyne.Window, switchToRegister func()) fyne.CanvasObject {
 			return
 		}
 		status.SetText("Login successful")
-		SaveToken(token)
+		SaveToken(applo, token)
 		conn, err := ConnectWS(WSURL, token)
 		if err != nil {
 			status.SetText("Failed to connect to WebSocket")
@@ -160,7 +161,7 @@ func RegisterView(w fyne.Window, switchToLogin func()) fyne.CanvasObject {
 			return
 		}
 		status.SetText("Login successful")
-		SaveToken(token)
+		SaveToken(applo, token)
 		conn, err := ConnectWS(WSURL, token)
 		if err != nil {
 			status.SetText("Failed to connect to WebSocket")
@@ -186,7 +187,7 @@ func RegisterView(w fyne.Window, switchToLogin func()) fyne.CanvasObject {
 }
 
 func ThemeSwitch() fyne.CanvasObject {
-	settings := LoadSettings()
+	settings := LoadSettings(applo)
 
 	check := widget.NewCheck("Dark Mode", func(on bool) {
 		if on {
@@ -196,7 +197,7 @@ func ThemeSwitch() fyne.CanvasObject {
 			fyne.CurrentApp().Settings().SetTheme(theme.LightTheme())
 			settings.Theme = "light"
 		}
-		SaveSettings(settings)
+		SaveSettings(applo, settings)
 	})
 
 	if settings.Theme == "dark" {
@@ -342,11 +343,17 @@ func ChatInput(onSend func(msg string)) fyne.CanvasObject {
 func ChatPage(w fyne.Window, id int, username string, firstn string, lastn string, onBack func()) fyne.CanvasObject {
 	chatOpened = true
 	msgBox, scroll := ChatMessages()
-	NotificationBoxes[username].SetText("0")
-	NotificationBoxes[username].Refresh()
+	///NotificationBoxes[username].SetText("0")
+	//NotificationBoxes[username].Refresh()
 	chatbox_1 = &ChatBox{id, msgBox, username, scroll}
 
-	chat, err := LoadOrCreateChat(id, username, firstn, lastn)
+	chat, err := LoadOrCreateChat(
+		applo,
+		id,
+		username,
+		firstn,
+		lastn,
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -362,7 +369,7 @@ func ChatPage(w fyne.Window, id int, username string, firstn string, lastn strin
 	}
 	input := ChatInput(func(msg string) {
 		msgBox.Add(ChatBubble(msg, true))
-		AppendMessage(id, chat, "You", username, msg)
+		AppendMessage(applo, id, chat, "You", username, msg)
 		SendToUser(wsConn, id, msg)
 		scroll.ScrollToBottom()
 	})
@@ -427,7 +434,7 @@ func ChatRow(username, lastMsg, timeStr string, onClick func()) fyne.CanvasObjec
 
 func ChatList(w fyne.Window) fyne.CanvasObject {
 	list := container.NewVBox()
-	chatted, err := GetChattedUsers()
+	chatted, err := GetChattedUsers(applo)
 	if err != nil {
 		panic(err)
 	}
@@ -602,7 +609,7 @@ func UserRow(
 
 func AllUsersList(w fyne.Window) fyne.CanvasObject {
 	list := container.NewVBox()
-	token, _ := GetToken()
+	token, _ := GetToken(applo)
 	users, _ := AllUsers(token)
 	// MOCK DATA
 
@@ -654,7 +661,7 @@ func HomePage(w fyne.Window) {
 			"Pr",
 			theme.SettingsIcon(),
 			ProfilePage(w, "username", "First", "Last", func() {
-				ClearToken()
+				ClearToken(applo)
 			}),
 		),
 	)
@@ -664,18 +671,22 @@ func HomePage(w fyne.Window) {
 
 func main() {
 	//ClearToken()
-	a := app.New()
-	w := a.NewWindow("Chat App")
+	applo = app.NewWithID("forstress.chat.application")
+	w := applo.NewWindow("Chat App")
+	//if err := ensureChatsDir(applo); err != nil {
+	//	panic(err)
+	//}
+	fmt.Println(HasToken(applo))
 
-	settings := LoadSettings()
+	settings := LoadSettings(applo)
 
 	if settings.Theme == "dark" {
-		a.Settings().SetTheme(theme.DarkTheme())
+		applo.Settings().SetTheme(theme.DarkTheme())
 	} else {
-		a.Settings().SetTheme(theme.LightTheme())
+		applo.Settings().SetTheme(theme.LightTheme())
 	}
 
-	token, has := GetToken()
+	token, has := GetToken(applo)
 	if !has {
 		token = ""
 	}
@@ -688,7 +699,7 @@ func main() {
 	showRegister = func() {
 		w.SetContent(RegisterView(w, showLogin))
 	}
-	if HasToken() {
+	if HasToken(applo) {
 		w.SetContent(ConnectingPage())
 
 		go func() {
@@ -727,23 +738,18 @@ func main() {
 								return
 							}
 
-							chasts, err := GetChatByUserID(id)
+							chasts, err := LoadOrCreateChat(applo, id, msg["who"].(string), msg["First_name"].(string), msg["Last_name"].(string))
 							if err != nil {
 								return
 							}
 
-							nu, err := strconv.Atoi(NotificationBoxes[msg["who"].(string)].Text)
-							if err != nil {
-								panic(err)
-							}
-							NotificationBoxes[msg["who"].(string)].SetText(strconv.Itoa(nu + 1))
 							if chatOpened {
 								if chatbox_1.username == msg["who"] {
 									chatbox_1.messagebox.Add(ChatBubble(msg["message"].(string), false))
 									chatbox_1.scroller.ScrollToBottom()
 								}
 							}
-							AppendMessage(id, chasts, msg["who"].(string), "You", msg["message"].(string))
+							AppendMessage(applo, id, chasts, msg["who"].(string), "You", msg["message"].(string))
 
 						}
 					}

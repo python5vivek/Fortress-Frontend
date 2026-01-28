@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io"
 	"time"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/storage"
 )
 
 type ChatMessage struct {
@@ -16,7 +18,7 @@ type ChatMessage struct {
 }
 
 type ChatFile struct {
-	Id          int
+	Id          int           `json:"id"`
 	UserName    string        `json:"user_name"`
 	First_Name  string        `json:"first_name"`
 	Last_Name   string        `json:"last_name"`
@@ -32,26 +34,69 @@ type ChattedUser struct {
 	ChannelName string
 }
 
-func chatDir() string {
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".fortresschat", "chats")
-	os.MkdirAll(dir, 0700)
-	return dir
+//
+// helpers
+//
+
+func ensureChatsDir(app fyne.App) error {
+	root := app.Storage().RootURI()
+
+	chatsDir, err := storage.Child(root, "chats")
+	if err != nil {
+		return err
+	}
+
+	keepFile, err := storage.Child(chatsDir, ".keep")
+	if err != nil {
+		return err
+	}
+
+	// 🔑 Just write. Do NOT read.
+	w, err := storage.Writer(keepFile)
+	if err != nil {
+		return err
+	}
+	w.Close()
+
+	return nil
+}
+func chatDirURI(app fyne.App) (fyne.URI, error) {
+	return app.Storage().RootURI(), nil
 }
 
-func chatFilePath(userID int) string {
-	return filepath.Join(chatDir(), fmt.Sprintf("user_%d.json", userID))
+func chatFileURI(app fyne.App, userID int) (fyne.URI, error) {
+	dir, err := chatDirURI(app)
+	if err != nil {
+		return nil, err
+	}
+	return storage.Child(dir, fmt.Sprintf("user_%d.json", userID))
 }
+
+//
+// core functions
+//
 
 func LoadOrCreateChat(
+	app fyne.App,
 	userID int,
 	username, first, last string,
 ) (*ChatFile, error) {
 
-	path := chatFilePath(userID)
+	chatsDir := app.Storage().RootURI()
 
-	// if exists → load
-	if data, err := os.ReadFile(path); err == nil {
+	chatURI, err := storage.Child(
+		chatsDir,
+		fmt.Sprintf("user_%d.json", userID),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1️⃣ Try reading
+	if r, err := storage.Reader(chatURI); err == nil {
+		defer r.Close()
+
+		data, _ := io.ReadAll(r)
 		var chat ChatFile
 		if err := json.Unmarshal(data, &chat); err != nil {
 			return nil, err
@@ -59,7 +104,7 @@ func LoadOrCreateChat(
 		return &chat, nil
 	}
 
-	// else → create
+	// 2️⃣ Create file if missing
 	chat := ChatFile{
 		Id:          userID,
 		UserName:    username,
@@ -69,22 +114,45 @@ func LoadOrCreateChat(
 		Messages:    []ChatMessage{},
 	}
 
-	if err := SaveChat(userID, &chat); err != nil {
+	w, err := storage.Writer(chatURI)
+	if err != nil {
+		return nil, err
+	}
+	defer w.Close()
+
+	data, _ := json.MarshalIndent(chat, "", "  ")
+	_, err = w.Write(data)
+	if err != nil {
 		return nil, err
 	}
 
 	return &chat, nil
 }
 
-func SaveChat(userID int, chat *ChatFile) error {
+func SaveChat(app fyne.App, userID int, chat *ChatFile) error {
+	uri, err := chatFileURI(app, userID)
+	if err != nil {
+		return err
+	}
+
+	w, err := storage.Writer(uri)
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+
 	data, err := json.MarshalIndent(chat, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(chatFilePath(userID), data, 0600)
+	fmt.Println("Saving chat file for user:", userID)
+	fmt.Println(string(data))
+	_, err = w.Write(data)
+	return err
 }
 
 func AppendMessage(
+	app fyne.App,
 	userID int,
 	chat *ChatFile,
 	from, to, message string,
@@ -98,14 +166,42 @@ func AppendMessage(
 	}
 
 	chat.Messages = append(chat.Messages, msg)
-	return SaveChat(userID, chat)
+
+	dir := app.Storage().RootURI()
+
+	uri, err := storage.Child(dir, fmt.Sprintf("user_%d.json", userID))
+	if err != nil {
+		return err
+	}
+
+	w, err := storage.Writer(uri)
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+
+	data, err := json.MarshalIndent(chat, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(data)
+	return err
 }
 
-func GetMessages(userID int) ([]ChatMessage, error) {
-	data, err := os.ReadFile(chatFilePath(userID))
+func GetMessages(app fyne.App, userID int) ([]ChatMessage, error) {
+	uri, err := chatFileURI(app, userID)
 	if err != nil {
 		return nil, err
 	}
+
+	r, err := storage.Reader(uri)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+
+	data, _ := io.ReadAll(r)
 
 	var chat ChatFile
 	if err := json.Unmarshal(data, &chat); err != nil {
@@ -115,30 +211,58 @@ func GetMessages(userID int) ([]ChatMessage, error) {
 	return chat.Messages, nil
 }
 
-func GetChattedUsers() ([]ChattedUser, error) {
-	var users []ChattedUser
-
-	files, err := os.ReadDir(chatDir())
+func GetChatByUserID(app fyne.App, userID int) (*ChatFile, error) {
+	uri, err := chatFileURI(app, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, file := range files {
-		if file.IsDir() {
+	r, err := storage.Reader(uri)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+
+	data, _ := io.ReadAll(r)
+
+	var chat ChatFile
+	if err := json.Unmarshal(data, &chat); err != nil {
+		return nil, err
+	}
+
+	return &chat, nil
+}
+
+func GetChattedUsers(app fyne.App) ([]ChattedUser, error) {
+	var users []ChattedUser
+
+	dir, err := chatDirURI(app)
+	if err != nil {
+		return users, nil
+	}
+
+	list, err := storage.List(dir)
+	if err != nil {
+		return users, nil
+	}
+
+	for _, uri := range list {
+		r, err := storage.Reader(uri)
+		if uri.Name() == "auth.json" {
 			continue
 		}
-
-		// extract user ID from filename: user_<id>.json
-		var id int
-		_, err := fmt.Sscanf(file.Name(), "user_%d.json", &id)
+		if uri.Name() == "settings.json" {
+			continue
+		}
+		if uri.Name() == "preferences.json" {
+			continue
+		}
 		if err != nil {
 			continue
 		}
 
-		data, err := os.ReadFile(filepath.Join(chatDir(), file.Name()))
-		if err != nil {
-			continue
-		}
+		data, _ := io.ReadAll(r)
+		r.Close()
 
 		var chat ChatFile
 		if err := json.Unmarshal(data, &chat); err != nil {
@@ -146,7 +270,7 @@ func GetChattedUsers() ([]ChattedUser, error) {
 		}
 
 		users = append(users, ChattedUser{
-			ID:          id,
+			ID:          chat.Id,
 			UserName:    chat.UserName,
 			FirstName:   chat.First_Name,
 			LastName:    chat.Last_Name,
@@ -155,20 +279,4 @@ func GetChattedUsers() ([]ChattedUser, error) {
 	}
 
 	return users, nil
-}
-
-func GetChatByUserID(userID int) (*ChatFile, error) {
-	path := chatFilePath(userID)
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var chat ChatFile
-	if err := json.Unmarshal(data, &chat); err != nil {
-		return nil, err
-	}
-
-	return &chat, nil
 }

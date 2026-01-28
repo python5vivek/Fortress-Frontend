@@ -2,30 +2,37 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
-)
+	"io"
 
-func settingsFilePath() string {
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".fortresschat")
-	os.MkdirAll(dir, 0700)
-	return filepath.Join(dir, "settings.json")
-}
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/storage"
+)
 
 type AppSettings struct {
 	Theme string `json:"theme"` // "dark" or "light"
 }
 
-func LoadSettings() AppSettings {
-	path := settingsFilePath()
+// helper: settings.json URI
+func settingsURI(app fyne.App) (fyne.URI, error) {
+	return storage.Child(app.Storage().RootURI(), "settings.json")
+}
 
-	data, err := os.ReadFile(path)
+func LoadSettings(app fyne.App) AppSettings {
+	uri, err := settingsURI(app)
+	if err != nil {
+		return AppSettings{Theme: "light"}
+	}
+
+	r, err := storage.Reader(uri)
 	if err != nil {
 		// default settings
-		return AppSettings{
-			Theme: "light",
-		}
+		return AppSettings{Theme: "light"}
+	}
+	defer r.Close()
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return AppSettings{Theme: "light"}
 	}
 
 	var s AppSettings
@@ -33,13 +40,31 @@ func LoadSettings() AppSettings {
 		return AppSettings{Theme: "light"}
 	}
 
+	// safety default
+	if s.Theme == "" {
+		s.Theme = "light"
+	}
+
 	return s
 }
 
-func SaveSettings(s AppSettings) error {
+func SaveSettings(app fyne.App, s AppSettings) error {
+	uri, err := settingsURI(app)
+	if err != nil {
+		return err
+	}
+
+	w, err := storage.Writer(uri)
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(settingsFilePath(), data, 0600)
+
+	_, err = w.Write(data)
+	return err
 }

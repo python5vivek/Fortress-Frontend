@@ -1,6 +1,6 @@
 package main
 
-var BaseURL = "http://localhost:8000"
-var WSURL = "ws://localhost:8000/ws/"
+var BaseURL = "https://fortress-r2yz.onrender.com"
+var WSURL = "wss://fortress-r2yz.onrender.com/ws/"
 var LoginURL = BaseURL + "/login/"
 var RegisterURL = BaseURL + "/signup/"
