@@ -153,6 +153,7 @@ func RegisterView(w fyne.Window, switchToLogin func()) fyne.CanvasObject {
 			status.SetText("Invalid credentials")
 			return
 		}
+		AddUser(1, username.Text, first.Text, last.Text)
 		var respData map[string]string
 		json.NewDecoder(resp.Body).Decode(&respData)
 		token, ok := respData["token"]
@@ -677,6 +678,8 @@ func main() {
 	//	panic(err)
 	//}
 	fmt.Println(HasToken(applo))
+	initDB()
+	fmt.Println(GetSpecificUser(1))
 
 	settings := LoadSettings(applo)
 
