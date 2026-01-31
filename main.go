@@ -341,36 +341,34 @@ func ChatInput(onSend func(msg string)) fyne.CanvasObject {
 	)
 }
 
-func ChatPage(w fyne.Window, id int, username string, firstn string, lastn string, onBack func()) fyne.CanvasObject {
+func ChatPage(w fyne.Window, id int, username string, firstn string, onBack func()) fyne.CanvasObject {
 	chatOpened = true
 	msgBox, scroll := ChatMessages()
 	///NotificationBoxes[username].SetText("0")
 	//NotificationBoxes[username].Refresh()
 	chatbox_1 = &ChatBox{id, msgBox, username, scroll}
-
-	chat, err := LoadOrCreateChat(
-		applo,
-		id,
-		username,
-		firstn,
-		lastn,
-	)
-	if err != nil {
-		panic(err)
+	check := CheckIsIt(id)
+	if !check {
+		CreateNewChatLis(id, username, firstn)
 	}
-	chats := chat.Messages
+
+	chats := GetMessages(id)
 	for _, u := range chats {
 		//fmt.Println(u)
+		fmt.Println(u)
+		fmt.Println(u.From)
 		if u.From == "You" {
+			fmt.Print("Your chat")
 			msgBox.Add(ChatBubble(u.Message, true))
 		} else {
+			fmt.Print("Not Your chat")
 			msgBox.Add(ChatBubble(u.Message, false))
 		}
 		scroll.ScrollToBottom()
 	}
 	input := ChatInput(func(msg string) {
 		msgBox.Add(ChatBubble(msg, true))
-		AppendMessage(applo, id, chat, "You", username, msg)
+		AddMessage(id, username, "You", msg)
 		SendToUser(wsConn, id, msg)
 		scroll.ScrollToBottom()
 	})
@@ -435,14 +433,12 @@ func ChatRow(username, lastMsg, timeStr string, onClick func()) fyne.CanvasObjec
 
 func ChatList(w fyne.Window) fyne.CanvasObject {
 	list := container.NewVBox()
-	chatted, err := GetChattedUsers(applo)
-	if err != nil {
-		panic(err)
-	}
+	//chatted, err := GetChattedUsers(applo)
+	chatted := GetChattedList()
 	if len(chatted) > 0 {
 		for _, c := range chatted {
-			row := ChatRow(c.UserName, c.FirstName, c.LastName, func() {
-				w.SetContent(ChatPage(w, c.ID, c.UserName, c.FirstName, c.LastName, func() {
+			row := ChatRow(c.Username, c.FirstName, "Fortress", func() {
+				w.SetContent(ChatPage(w, c.ChatterID, c.Username, c.FirstName, func() {
 					HomePage(w)
 				}))
 			})
@@ -620,7 +616,7 @@ func AllUsersList(w fyne.Window) fyne.CanvasObject {
 			u.First_Name,
 			u.Last_Name,
 			func() {
-				w.SetContent(ChatPage(w, u.ID, u.Username, u.First_Name, u.Last_Name, func() {
+				w.SetContent(ChatPage(w, u.ID, u.Username, u.First_Name, func() {
 					HomePage(w)
 				}))
 			},
@@ -732,19 +728,9 @@ func main() {
 						}
 						if msg["from"] == "user" {
 							idStr, ok := msg["id"].(string)
-							if !ok {
-								return
-							}
+							fmt.Println(msg, ok)
 
-							id, err := strconv.Atoi(idStr)
-							if err != nil {
-								return
-							}
-
-							chasts, err := LoadOrCreateChat(applo, id, msg["who"].(string), msg["First_name"].(string), msg["Last_name"].(string))
-							if err != nil {
-								return
-							}
+							id, _ := strconv.Atoi(idStr)
 
 							if chatOpened {
 								if chatbox_1.username == msg["who"] {
@@ -752,7 +738,7 @@ func main() {
 									chatbox_1.scroller.ScrollToBottom()
 								}
 							}
-							AppendMessage(applo, id, chasts, msg["who"].(string), "You", msg["message"].(string))
+							AddMessage(id, "You", msg["who"].(string), msg["message"].(string))
 
 						}
 					}
