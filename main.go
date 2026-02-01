@@ -2,8 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"strconv"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var IsonlineWe bool
 var chatOpened = false
 var wsConn *websocket.Conn
 var messageBox *fyne.Container
@@ -369,7 +370,9 @@ func ChatPage(w fyne.Window, id int, username string, firstn string, onBack func
 	input := ChatInput(func(msg string) {
 		msgBox.Add(ChatBubble(msg, true))
 		AddMessage(id, username, "You", msg)
-		SendToUser(wsConn, id, msg)
+		if IsonlineWe {
+			SendToUser(wsConn, id, msg)
+		}
 		scroll.ScrollToBottom()
 	})
 	return container.NewBorder(
@@ -437,7 +440,7 @@ func ChatList(w fyne.Window) fyne.CanvasObject {
 	chatted := GetChattedList()
 	if len(chatted) > 0 {
 		for _, c := range chatted {
-			row := ChatRow(c.Username, c.FirstName, "Fortress", func() {
+			row := ChatRow(c.Username, c.FirstName, c.FirstName, func() {
 				w.SetContent(ChatPage(w, c.ChatterID, c.Username, c.FirstName, func() {
 					HomePage(w)
 				}))
@@ -524,11 +527,14 @@ func GlobalChatPage() fyne.CanvasObject {
 		if input.Text == "" {
 			return
 		}
-		err := SendToGlobal(wsConn, input.Text)
-		if err != nil {
-			fmt.Println("Error sending message:", err)
-			return
+		if IsonlineWe {
+			err := SendToGlobal(wsConn, input.Text)
+			if err != nil {
+				fmt.Println("Error sending message:", err)
+				return
+			}
 		}
+
 		input.SetText("")
 		scroll.ScrollToBottom()
 	})
@@ -674,7 +680,7 @@ func main() {
 	//	panic(err)
 	//}
 	fmt.Println(HasToken(applo))
-	initDB()
+	initDB(applo)
 	fmt.Println(GetSpecificUser(1))
 
 	settings := LoadSettings(applo)
@@ -700,52 +706,65 @@ func main() {
 	}
 	if HasToken(applo) {
 		w.SetContent(ConnectingPage())
-
-		go func() {
-			conn, err := ConnectWS(WSURL, token)
-			wsConn = conn
-
-			fyne.Do(func() {
-				if err != nil {
-					showLogin()
-					return
-				}
-
+		fyne.Do(func() {
+			if !IsOnline(BaseURL) {
+				err := errors.New("Server is offline or sleeping (timeout > 5s)")
+				dialog.ShowError(err, w)
 				HomePage(w)
-
+				IsonlineWe = false
+			} else {
+				IsonlineWe = true
 				go func() {
-					for {
-						msg, err := ReceiveMessage(conn)
+					conn, err := ConnectWS(WSURL, token)
+					wsConn = conn
+
+					fyne.Do(func() {
 						if err != nil {
-							fmt.Println("WebSocket closed:", err)
+							showLogin()
 							return
 						}
-						if msg["from"] == "global" {
-							fyne.Do(func() {
-								msgUI := MessageBubble(msg["who"].(string), msg["message"].(string))
-								messageBox.Add(msgUI)
-							})
-						}
-						if msg["from"] == "user" {
-							idStr, ok := msg["id"].(string)
-							fmt.Println(msg, ok)
 
-							id, _ := strconv.Atoi(idStr)
+						HomePage(w)
 
-							if chatOpened {
-								if chatbox_1.username == msg["who"] {
-									chatbox_1.messagebox.Add(ChatBubble(msg["message"].(string), false))
-									chatbox_1.scroller.ScrollToBottom()
+						go func() {
+							for {
+								msg, err := ReceiveMessage(conn)
+								if err != nil {
+									fmt.Println("WebSocket closed:", err)
+									return
+								}
+								if msg["from"] == "global" {
+									fyne.Do(func() {
+										msgUI := MessageBubble(msg["who"].(string), msg["message"].(string))
+										messageBox.Add(msgUI)
+									})
+								}
+								if msg["from"] == "user" {
+									idStr, ok := msg["id"].(float64)
+									fmt.Printf("%T\n", idStr)
+									fmt.Println(idStr)
+									fmt.Println(msg, ok)
+									id := int(idStr)
+									if !CheckIsIt(id) {
+										CreateNewChatLis(id, msg["who"].(string), msg["First_name"].(string))
+									}
+
+									if chatOpened {
+										if chatbox_1.username == msg["who"] {
+											chatbox_1.messagebox.Add(ChatBubble(msg["message"].(string), false))
+											chatbox_1.scroller.ScrollToBottom()
+										}
+									}
+									AddMessage(id, "You", msg["who"].(string), msg["message"].(string))
+
 								}
 							}
-							AddMessage(id, "You", msg["who"].(string), msg["message"].(string))
+						}()
 
-						}
-					}
+					})
 				}()
-
-			})
-		}()
+			}
+		})
 	} else {
 		showLogin()
 	}

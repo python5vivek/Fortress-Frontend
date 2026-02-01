@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"log"
+	"path/filepath"
 
+	"fyne.io/fyne/v2"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -33,8 +35,10 @@ type ChatLister struct {
 	FirstName string
 }
 
-func initDB() {
-	db, err := gorm.Open(sqlite.Open("app.db"), &gorm.Config{})
+func initDB(myApp fyne.App) {
+	storagePath := myApp.Storage().RootURI().Path()
+	dbPath := filepath.Join(storagePath, "app.db")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		log.Fatal("failed to connect database:", err)
 	}

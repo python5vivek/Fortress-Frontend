@@ -5,17 +5,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 type User struct {
-	ID        int    `json:"id"`
-	Username  string `json:"username"`
+	ID         int    `json:"id"`
+	Username   string `json:"username"`
 	First_Name string `json:"first_name"`
 	Last_Name  string `json:"last_name"`
 }
-
 
 func ConnectWS(baseURL, token string) (*websocket.Conn, error) {
 	u, err := url.Parse(baseURL)
@@ -79,6 +79,17 @@ func getJSON(url, token string) (*http.Response, error) {
 	return client.Do(req)
 }
 
+func IsOnline(url string) bool {
+	client := &http.Client{Timeout: 5 * time.Second}
+	req, _ := http.NewRequest("GET", url, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusNotFound
+}
+
 func AllUsers(token string) ([]User, error) {
 	url := BaseURL + "/users/"
 	resp, err := getJSON(url, token)
@@ -94,4 +105,3 @@ func AllUsers(token string) ([]User, error) {
 
 	return users, nil
 }
-
